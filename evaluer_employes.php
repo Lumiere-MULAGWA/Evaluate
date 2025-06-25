@@ -1,39 +1,160 @@
 <?php
 session_start();
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'chef_service') {
+require_once 'db.php';
+
+// Initialiser les variables d'erreur
+$error_message = '';
+$success_message = $_SESSION['success_message'] ?? '';
+unset($_SESSION['success_message']);
+
+// Vérification de l'authentification et du rôle
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['chef_service', 'chef_departement', 'drh'])) {
     header('Location: login.php');
     exit();
 }
-include('db.php');
 
-$chef_id = $_SESSION['user_id'];
+$evaluateur_id = $_SESSION['user_id'];
+$user_name = $_SESSION['nom'] ?? 'Utilisateur';
+$user_role = $_SESSION['role'];
+$user_avatar = $_SESSION['avatar'] ?? 'assets/img/default-avatar.svg';
 
 // Récupération des employés sélectionnés
-$ids = $_POST['employes'] ?? [];
+$ids = $_POST['employes'] ?? $_SESSION['selected_employees'] ?? [];
 if (!is_array($ids) || empty($ids)) {
-    echo "Aucun employé sélectionné.";
+    $_SESSION['error_message'] = "Aucun employé sélectionné pour l'évaluation.";
+    header('Location: selection_employes.php');
     exit();
 }
 
-// Sécuriser la requête avec des marqueurs
-$in = str_repeat('?,', count($ids) - 1) . '?';
-$sql = "SELECT * FROM utilisateurs WHERE id IN ($in) AND role = 'employe'";
-$req = $pdo->prepare($sql);
-$req->execute($ids);
-$employes = $req->fetchAll();
+// Sauvegarder dans la session pour persistence
+$_SESSION['selected_employees'] = $ids;
 
-// Enregistrement des évaluations
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['note'])) {
-    foreach ($_POST['note'] as $id_employe => $notes) {
-        foreach ($notes as $critere => $note) {
-            $commentaire = $_POST['commentaire'][$id_employe][$critere];
-            $stmt = $pdo->prepare("INSERT INTO evaluations (id_employe, id_evaluateur, critere, note, commentaire, annee) 
-                                   VALUES (?, ?, ?, ?, ?, YEAR(NOW()))");
-            $stmt->execute([$id_employe, $chef_id, $critere, $note, $commentaire]);
+try {
+    // Récupération des employés avec leurs informations complètes
+    $placeholders = str_repeat('?,', count($ids) - 1) . '?';
+    $sql = "SELECT u.*, d.nom as departement_nom 
+            FROM utilisateurs u 
+            LEFT JOIN departements d ON u.departement_id = d.id 
+            WHERE u.id IN ($placeholders) AND u.role = 'employe'
+            ORDER BY u.nom ASC";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($ids);
+    $employes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($employes)) {
+        $_SESSION['error_message'] = "Les employés sélectionnés n'ont pas été trouvés.";
+        header('Location: selection_employes.php');
+        exit();
+    }
+
+    // Critères d'évaluation avec descriptions
+    $criteres = [
+        'ponctualite' => [
+            'nom' => 'Ponctualité',
+            'description' => 'Respect des horaires et des délais',
+            'icon' => 'fas fa-clock'
+        ],
+        'competence' => [
+            'nom' => 'Compétences techniques',
+            'description' => 'Maîtrise des compétences requises pour le poste',
+            'icon' => 'fas fa-cogs'
+        ],
+        'travail_equipe' => [
+            'nom' => 'Travail en équipe',
+            'description' => 'Collaboration et communication avec les collègues',
+            'icon' => 'fas fa-users'
+        ],
+        'initiative' => [
+            'nom' => 'Initiative et autonomie',
+            'description' => 'Prise d\'initiative et capacité à travailler de manière autonome',
+            'icon' => 'fas fa-lightbulb'
+        ],
+        'qualite_travail' => [
+            'nom' => 'Qualité du travail',
+            'description' => 'Précision et qualité des tâches accomplies',
+            'icon' => 'fas fa-star'
+        ],
+        'communication' => [
+            'nom' => 'Communication',
+            'description' => 'Capacité à communiquer efficacement',
+            'icon' => 'fas fa-comments'
+        ]
+    ];
+
+    // Récupérer les évaluations existantes pour pré-remplir le formulaire
+    $existing_evaluations = [];
+    if (!empty($employes)) {
+        $eval_sql = "SELECT * FROM evaluations 
+                     WHERE id_employe IN ($placeholders) 
+                     AND id_evaluateur = ? 
+                     AND annee = YEAR(NOW())";
+        $eval_stmt = $pdo->prepare($eval_sql);
+        $eval_params = array_merge($ids, [$evaluateur_id]);
+        $eval_stmt->execute($eval_params);
+        $existing_evals = $eval_stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($existing_evals as $eval) {
+            $existing_evaluations[$eval['id_employe']][$eval['critere']] = [
+                'note' => $eval['note'],
+                'commentaire' => $eval['commentaire']
+            ];
         }
     }
-    echo "<script>alert('Évaluations enregistrées avec succès !'); window.location='selection_employes.php';</script>";
-    exit();
+
+    // Traitement de la soumission du formulaire
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_evaluation'])) {
+        $pdo->beginTransaction();
+        
+        try {
+            $evaluations_saved = 0;
+            
+            foreach ($_POST['evaluations'] as $id_employe => $evaluation_data) {
+                // Vérifier que l'employé fait partie de la sélection
+                if (!in_array($id_employe, $ids)) continue;
+                
+                // Supprimer les anciennes évaluations de cet employé par cet évaluateur pour cette année
+                $delete_stmt = $pdo->prepare("DELETE FROM evaluations 
+                                              WHERE id_employe = ? 
+                                              AND id_evaluateur = ? 
+                                              AND annee = YEAR(NOW())");
+                $delete_stmt->execute([$id_employe, $evaluateur_id]);
+                
+                foreach ($criteres as $critere_key => $critere_info) {
+                    $note = $evaluation_data['notes'][$critere_key] ?? null;
+                    $commentaire = trim($evaluation_data['commentaires'][$critere_key] ?? '');
+                    
+                    if ($note !== null && $note !== '' && $note >= 0 && $note <= 100) {
+                        $insert_stmt = $pdo->prepare("INSERT INTO evaluations 
+                                                      (id_employe, id_evaluateur, critere, note, commentaire, annee, date_creation) 
+                                                      VALUES (?, ?, ?, ?, ?, YEAR(NOW()), NOW())");
+                        $insert_stmt->execute([$id_employe, $evaluateur_id, $critere_key, $note, $commentaire]);
+                        $evaluations_saved++;
+                    }
+                }
+            }
+            
+            $pdo->commit();
+            unset($_SESSION['selected_employees']);
+            $_SESSION['success_message'] = "Évaluations enregistrées avec succès ! ($evaluations_saved évaluations sauvegardées)";
+            
+            $redirect_url = 'cs_dashboard.php';
+            if ($user_role === 'chef_departement') {
+                $redirect_url = 'cd_dashboard.php';
+            } elseif ($user_role === 'drh') {
+                $redirect_url = 'drh_dashboard.php';
+            }
+            
+            header('Location: ' . $redirect_url);
+            exit();
+            
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            $error_message = "Erreur lors de l'enregistrement des évaluations : " . $e->getMessage();
+        }
+    }
+
+} catch (PDOException $e) {
+    $error_message = "Erreur de base de données : " . $e->getMessage();
 }
 ?>
 

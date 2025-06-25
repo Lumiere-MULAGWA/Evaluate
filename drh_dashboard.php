@@ -1,30 +1,118 @@
 <?php
-require('vendor/autoload.php');
 require('db.php');
-use Dompdf\Dompdf;
 
-// Récupérer les évaluations critiques
-$requete = $pdo->query("SELECT u.nom AS employe, d.nom AS departement, e.critere, e.note, e.commentaire
+
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+
+// Récupérer toutes les évaluations
+$requete = $pdo->prepare("SELECT u.nom AS employe, d.nom AS departement, e.critere, e.note, e.commentaire, e.periode_fin
                          FROM evaluations e
                          JOIN utilisateurs u ON e.id_employe = u.id
                          JOIN departements d ON u.id_departement = d.id
-                         WHERE e.note <= 50");
-$critiques = $requete->fetchAll();
+                         ORDER BY e.periode_fin DESC");
+$requete->execute();
+$evaluations = $requete->fetchAll();
 
-// Créer le HTML du PDF
-ob_start();
+// Statistiques pour le dashboard
+$stats = $pdo->query("SELECT 
+    COUNT(*) as total_evaluations,
+    AVG(note) as moyenne_generale,
+    COUNT(CASE WHEN note <= 50 THEN 1 END) as evaluations_critiques,
+    COUNT(CASE WHEN note >= 80 THEN 1 END) as evaluations_excellentes
+    FROM evaluations")->fetch();
+
+// Export Excel si demandé
+if (isset($_POST['export_excel'])) {
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    
+    // En-têtes
+    $sheet->setCellValue('A1', 'Employé');
+    $sheet->setCellValue('B1', 'Département');
+    $sheet->setCellValue('C1', 'Critère');
+    $sheet->setCellValue('D1', 'Note');
+    $sheet->setCellValue('E1', 'Commentaire');
+    $sheet->setCellValue('F1', 'Date');
+    
+    // Données
+    $row = 2;
+    foreach ($evaluations as $eval) {
+        $sheet->setCellValue('A' . $row, $eval['employe']);
+        $sheet->setCellValue('B' . $row, $eval['departement']);
+        $sheet->setCellValue('C' . $row, $eval['critere']);
+        $sheet->setCellValue('D' . $row, $eval['note']);
+        $sheet->setCellValue('E' . $row, $eval['commentaire']);
+        $sheet->setCellValue('F' . $row, $eval['date_evaluation']);
+        $row++;
+    }
+    
+    $writer = new Xlsx($spreadsheet);
+    $filename = 'evaluations_' . date('Y-m-d') . '.xlsx';
+    
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+    
+    $writer->save('php://output');
+    exit;
+}
 ?>
-<html>
+
+<!DOCTYPE html>
+<html lang="fr">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard DRH</title>
     <style>
-        body { font-family: DejaVu Sans, sans-serif; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-        th { background-color: #003366; color: white; }
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+        .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .card h3 { margin: 0 0 10px 0; color: #333; }
+        .stat-number { font-size: 2em; font-weight: bold; color: #007bff; }
+        .critiques { color: #dc3545; }
+        .excellentes { color: #28a745; }
+        table { width: 100%; border-collapse: collapse; background: white; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #007bff; color: white; }
+        .btn { padding: 10px 20px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .btn:hover { background-color: #218838; }
+        .note { text-align: center; }
+        .note-critique { background-color: #f8d7da; }
+        .note-excellente { background-color: #d4edda; }
     </style>
 </head>
 <body>
-    <h2>Rapport des évaluations critiques (<= 50%)</h2>
+    <h1>Dashboard DRH - Gestion des Évaluations</h1>
+    
+    <!-- Dashboard Statistics -->
+    <div class="dashboard">
+        <div class="card">
+            <h3>Total Évaluations</h3>
+            <div class="stat-number"><?= $stats['total_evaluations'] ?></div>
+        </div>
+        
+        <div class="card">
+            <h3>Évaluations Critiques</h3>
+            <div class="stat-number critiques"><?= $stats['evaluations_critiques'] ?></div>
+            <small>(≤ 50%)</small>
+        </div>
+        <div class="card">
+            <h3>Évaluations Excellentes</h3>
+            <div class="stat-number excellentes"><?= $stats['evaluations_excellentes'] ?></div>
+            <small>(≥ 80%)</small>
+        </div>
+    </div>
+    
+    <!-- Export Controls -->
+    <div style="margin-bottom: 20px;">
+        <form method="post" style="display: inline;">
+            <button type="submit" name="export_excel" class="btn">📊 Exporter en Excel</button>
+        </form>
+    </div>
+    
+    <!-- Evaluations Table -->
     <table>
         <thead>
             <tr>
@@ -33,59 +121,21 @@ ob_start();
                 <th>Critère</th>
                 <th>Note</th>
                 <th>Commentaire</th>
+                <th>Date</th>
             </tr>
         </thead>
         <tbody>
-        <?php foreach ($critiques as $c): ?>
-            <tr>
-                <td><?= htmlspecialchars($c['employe']) ?></td>
-                <td><?= htmlspecialchars($c['departement']) ?></td>
-                <td><?= htmlspecialchars($c['critere']) ?></td>
-                <td><?= htmlspecialchars($c['note']) ?>%</td>
-                <td><?= htmlspecialchars($c['commentaire']) ?></td>
+            <?php foreach ($evaluations as $eval): ?>
+            <tr class="<?= $eval['note'] <= 50 ? 'note-critique' : ($eval['note'] >= 80 ? 'note-excellente' : '') ?>">
+                <td><?= htmlspecialchars($eval['employe']) ?></td>
+                <td><?= htmlspecialchars($eval['departement']) ?></td>
+                <td><?= htmlspecialchars($eval['critere']) ?></td>
+                <td class="note"><?= htmlspecialchars($eval['note']) ?>%</td>
+                <td><?= htmlspecialchars($eval['commentaire']) ?></td>
+                <td><?= htmlspecialchars($eval['date_evaluation']) ?></td>
             </tr>
-        <?php endforeach; ?>
+            <?php endforeach; ?>
         </tbody>
     </table>
 </body>
 </html>
-<?php
-$html = ob_get_clean();
-
-// Générer le PDF
-$dompdf = new Dompdf();
-$dompdf->loadHtml($html);
-$dompdf->setPaper('A4', 'portrait');
-$dompdf->render();
-$output = $dompdf->output();
-
-// Enregistrer le fichier temporairement
-$filePath = 'rapport_evaluation.pdf';
-file_put_contents($filePath, $output);
-
-// Envoi par mail
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
-
-$mail = new PHPMailer(true);
-try {
-    $mail->isSMTP();
-    $mail->Host = 'smtp.example.com'; // Remplacer par votre serveur SMTP
-    $mail->SMTPAuth = true;
-    $mail->Username = 'votre-email@example.com';
-    $mail->Password = 'votre-mot-de-passe';
-    $mail->SMTPSecure = 'tls';
-    $mail->Port = 587;
-
-    $mail->setFrom('votre-email@example.com', 'Application RH');
-    $mail->addAddress('drh@example.com', 'DRH');
-    $mail->Subject = 'Rapport des évaluations critiques';
-    $mail->Body = 'Bonjour, veuillez trouver ci-joint le rapport des évaluations critiques.';
-    $mail->addAttachment($filePath);
-
-    $mail->send();
-    echo "Rapport PDF généré et envoyé avec succès.";
-} catch (Exception $e) {
-    echo "Erreur lors de l'envoi : {$mail->ErrorInfo}";
-}
-?>
