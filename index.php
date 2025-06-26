@@ -803,7 +803,10 @@ $top_performers = [
         </main>
 
         <footer class="modern-footer">
-            <p>&copy; 2025 Evaluate - Plateforme d'Excellence RH | Powered by Innovation ✨</p>
+            <p>&copy; 2025 Evaluate - Plateforme d'Excellence RH | Powered by Innovation ✨
+                <br>
+                lmr lumiere
+            </p>
         </footer>
     </div>
 

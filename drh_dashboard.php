@@ -24,30 +24,30 @@ $stats = $pdo->query("SELECT
 
 // Export Excel si demandé
 if (isset($_POST['export_excel'])) {
-    $spreadsheet = new Spreadsheet();
-    $sheet = $spreadsheet->getActiveSheet();
+    $filename = 'evaluations_' . date('Y-m-d') . '.csv';
+    
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment;filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+    
+    $output = fopen('php://output', 'w');
     
     // En-têtes
-    $sheet->setCellValue('A1', 'Employé');
-    $sheet->setCellValue('B1', 'Département');
-    $sheet->setCellValue('C1', 'Critère');
-    $sheet->setCellValue('D1', 'Note');
-    $sheet->setCellValue('E1', 'Commentaire');
-    $sheet->setCellValue('F1', 'Date');
+    fputcsv($output, ['Employé', 'Département', 'Critère', 'Note', 'Commentaire', 'Date']);
     
     // Données
-    $row = 2;
     foreach ($evaluations as $eval) {
-        $sheet->setCellValue('A' . $row, $eval['employe']);
-        $sheet->setCellValue('B' . $row, $eval['departement']);
-        $sheet->setCellValue('C' . $row, $eval['critere']);
-        $sheet->setCellValue('D' . $row, $eval['note']);
-        $sheet->setCellValue('E' . $row, $eval['commentaire']);
-        $sheet->setCellValue('F' . $row, $eval['date_evaluation']);
-        $row++;
+        fputcsv($output, [
+            $eval['employe'],
+            $eval['departement'],
+            $eval['critere'],
+            $eval['note'],
+            $eval['commentaire'],
+            $eval['periode_fin']
+        ]);
     }
     
-    $writer = new Xlsx($spreadsheet);
+    fclose($output);
     $filename = 'evaluations_' . date('Y-m-d') . '.xlsx';
     
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -84,6 +84,10 @@ if (isset($_POST['export_excel'])) {
     </style>
 </head>
 <body>
+    <div style="margin-bottom: 20px;">
+        <button   class="btn" style="background-color: #6c757d;"><a href="index.php" style="color:white">retour</a></button>
+    </div>
+    
     <h1>Dashboard DRH - Gestion des Évaluations</h1>
     
     <!-- Dashboard Statistics -->
@@ -132,7 +136,7 @@ if (isset($_POST['export_excel'])) {
                 <td><?= htmlspecialchars($eval['critere']) ?></td>
                 <td class="note"><?= htmlspecialchars($eval['note']) ?>%</td>
                 <td><?= htmlspecialchars($eval['commentaire']) ?></td>
-                <td><?= htmlspecialchars($eval['date_evaluation']) ?></td>
+                <td><?= htmlspecialchars($eval['periode_fin']) ?></td>
             </tr>
             <?php endforeach; ?>
         </tbody>
