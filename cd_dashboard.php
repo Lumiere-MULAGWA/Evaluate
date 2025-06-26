@@ -303,7 +303,7 @@ if (isset($_POST['soumettre'])) {
 <body>
     <div class="container">
         <div class="header">
-            <a href="dashboard.php" class="back-btn">
+            <a href="index.php" class="back-btn">
                 <i class="fas fa-arrow-left"></i>
                 Retour
             </a>

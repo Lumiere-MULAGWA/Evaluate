@@ -2,6 +2,11 @@
 session_start();
 require_once 'db.php';
 
+// Initialisation des variables
+$error_message = '';
+$employes = [];
+$criteres = [];
+
 // Vérification de l'authentification et du rôle
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['chef_service', 'chef_departement', 'drh'])) {
     header('Location: login.php');
@@ -16,19 +21,53 @@ $user_role = $_SESSION['role'];
 $ids = $_POST['employes'] ?? $_SESSION['selected_employees'] ?? [];
 if (!is_array($ids) || empty($ids)) {
     $_SESSION['error_message'] = "Aucun employé sélectionné pour l'évaluation.";
-    header('Location: selection_employes.php');
+    header('Location: cs_dashboard.php');
     exit();
 }
 
 // Sauvegarder dans la session pour persistence
 $_SESSION['selected_employees'] = $ids;
 
+// Critères d'évaluation avec descriptions
+$criteres = [
+    'ponctualite' => [
+        'nom' => 'Ponctualité',
+        'description' => 'Respect des horaires et des délais',
+        'icon' => 'fas fa-clock'
+    ],
+    'competence' => [
+        'nom' => 'Compétences techniques',
+        'description' => 'Maîtrise des compétences requises pour le poste',
+        'icon' => 'fas fa-cogs'
+    ],
+    'travail_equipe' => [
+        'nom' => 'Travail en équipe',
+        'description' => 'Collaboration et communication avec les collègues',
+        'icon' => 'fas fa-users'
+    ],
+    'initiative' => [
+        'nom' => 'Initiative et autonomie',
+        'description' => 'Prise d\'initiative et capacité à travailler de manière autonome',
+        'icon' => 'fas fa-lightbulb'
+    ],
+    'qualite_travail' => [
+        'nom' => 'Qualité du travail',
+        'description' => 'Précision et qualité des tâches accomplies',
+        'icon' => 'fas fa-star'
+    ],
+    'communication' => [
+        'nom' => 'Communication',
+        'description' => 'Capacité à communiquer efficacement',
+        'icon' => 'fas fa-comments'
+    ]
+];
+
 try {
     // Récupération des employés avec leurs informations complètes
     $placeholders = str_repeat('?,', count($ids) - 1) . '?';
     $sql = "SELECT u.*, d.nom as departement_nom 
             FROM utilisateurs u 
-            LEFT JOIN departements d ON u.departement_id = d.id 
+            LEFT JOIN departements d ON u.id_departement = d.id 
             WHERE u.id IN ($placeholders) AND u.role = 'employe'
             ORDER BY u.nom ASC";
     $stmt = $pdo->prepare($sql);
@@ -37,43 +76,9 @@ try {
 
     if (empty($employes)) {
         $_SESSION['error_message'] = "Les employés sélectionnés n'ont pas été trouvés.";
-        header('Location: selection_employes.php');
+        header('Location: cs_dashboard.php');
         exit();
     }
-
-    // Critères d'évaluation avec descriptions
-    $criteres = [
-        'ponctualite' => [
-            'nom' => 'Ponctualité',
-            'description' => 'Respect des horaires et des délais',
-            'icon' => 'fas fa-clock'
-        ],
-        'competence' => [
-            'nom' => 'Compétences techniques',
-            'description' => 'Maîtrise des compétences requises pour le poste',
-            'icon' => 'fas fa-cogs'
-        ],
-        'travail_equipe' => [
-            'nom' => 'Travail en équipe',
-            'description' => 'Collaboration et communication avec les collègues',
-            'icon' => 'fas fa-users'
-        ],
-        'initiative' => [
-            'nom' => 'Initiative et autonomie',
-            'description' => 'Prise d\'initiative et capacité à travailler de manière autonome',
-            'icon' => 'fas fa-lightbulb'
-        ],
-        'qualite_travail' => [
-            'nom' => 'Qualité du travail',
-            'description' => 'Précision et qualité des tâches accomplies',
-            'icon' => 'fas fa-star'
-        ],
-        'communication' => [
-            'nom' => 'Communication',
-            'description' => 'Capacité à communiquer efficacement',
-            'icon' => 'fas fa-comments'
-        ]
-    ];
 
     // Traitement de la soumission du formulaire
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_evaluation'])) {
@@ -86,21 +91,23 @@ try {
                 // Vérifier que l'employé fait partie de la sélection
                 if (!in_array($id_employe, $ids)) continue;
                 
-                // Supprimer les anciennes évaluations de cet employé par cet évaluateur pour cette année
+                // Supprimer les anciennes évaluations de cet employé par cet évaluateur pour cette période
                 $delete_stmt = $pdo->prepare("DELETE FROM evaluations 
                                               WHERE id_employe = ? 
                                               AND id_evaluateur = ? 
-                                              AND annee = YEAR(NOW())");
+                                              AND periode_debut = CURDATE() 
+                                              AND periode_fin = CURDATE()");
                 $delete_stmt->execute([$id_employe, $evaluateur_id]);
                 
                 foreach ($criteres as $critere_key => $critere_info) {
                     $note = $evaluation_data['notes'][$critere_key] ?? null;
-                    $commentaire = $evaluation_data['commentaires'][$critere_key] ?? '';
+                    $commentaire = trim($evaluation_data['commentaires'][$critere_key] ?? '');
                     
-                    if ($note !== null && $note !== '') {
+                    if ($note !== null && $note !== '' && is_numeric($note)) {
                         $insert_stmt = $pdo->prepare("INSERT INTO evaluations 
-                                                      (id_employe, id_evaluateur, critere, note, commentaire, annee, date_creation) 
-                                                      VALUES (?, ?, ?, ?, ?, YEAR(NOW()), NOW())");
+                                                      (id_employe, id_evaluateur, critere, note, commentaire, 
+                                                       periode_debut, periode_fin, statut, date_creation) 
+                                                      VALUES (?, ?, ?, ?, ?, CURDATE(), CURDATE(), 'finalise', NOW())");
                         $insert_stmt->execute([$id_employe, $evaluateur_id, $critere_key, $note, $commentaire]);
                         $evaluations_saved++;
                     }
@@ -129,6 +136,17 @@ try {
 
 } catch (PDOException $e) {
     $error_message = "Erreur de base de données : " . $e->getMessage();
+    // En cas d'erreur, on initialise une liste vide pour éviter les erreurs d'affichage
+    if (empty($employes)) {
+        $employes = [];
+    }
+}
+
+// Vérification finale - si pas d'employés trouvés, rediriger
+if (empty($employes) && empty($error_message)) {
+    $_SESSION['error_message'] = "Aucun employé trouvé pour l'évaluation.";
+    header('Location: cs_dashboard.php');
+    exit();
 }
 ?>
 
@@ -202,12 +220,19 @@ try {
                 </div>
             </div>
 
-            <?php if (isset($error_message)): ?>
+            <?php if (isset($error_message) && !empty($error_message)): ?>
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-triangle"></i>
                     <?= htmlspecialchars($error_message) ?>
+                    <div style="margin-top: 10px;">
+                        <a href="cs_dashboard.php" class="btn btn-primary">
+                            <i class="fas fa-arrow-left"></i> Retour au tableau de bord
+                        </a>
+                    </div>
                 </div>
             <?php endif; ?>
+
+            <?php if (!empty($employes)): ?>
 
             <!-- Formulaire d'évaluation -->
             <form method="POST" id="evaluationForm" class="evaluation-form">
@@ -303,13 +328,18 @@ try {
 
                                             <div class="comment-section">
                                                 <label class="form-label" for="comment_<?= $employe['id'] ?>_<?= $critere_key ?>">
+                                                    <i class="fas fa-comment-alt"></i>
                                                     Commentaires et observations
+                                                    <span class="comment-optional">(optionnel)</span>
                                                 </label>
                                                 <textarea name="evaluations[<?= $employe['id'] ?>][commentaires][<?= $critere_key ?>]" 
                                                           id="comment_<?= $employe['id'] ?>_<?= $critere_key ?>"
                                                           class="comment-textarea" 
-                                                          placeholder="Ajoutez vos commentaires et suggestions d'amélioration..."
-                                                          rows="3"></textarea>
+                                                          placeholder="Détaillez votre évaluation : points forts, axes d'amélioration, suggestions..."
+                                                          rows="4"></textarea>
+                                                <div class="comment-counter">
+                                                    <span class="char-count">0</span> / 500 caractères
+                                                </div>
                                             </div>
                                         </div>
                                     <?php endforeach; ?>
@@ -347,6 +377,19 @@ try {
                     </div>
                 </div>
             </form>
+            
+            <?php else: ?>
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <h3>Aucun employé sélectionné</h3>
+                    <p>Aucun employé n'a été trouvé pour l'évaluation. Veuillez retourner à la sélection des employés.</p>
+                    <div style="margin-top: 15px;">
+                        <a href="cs_dashboard.php" class="btn btn-primary">
+                            <i class="fas fa-users"></i> Sélectionner des employés
+                        </a>
+                    </div>
+                </div>
+            <?php endif; ?>
         </div>
     </main>
 

@@ -13,12 +13,15 @@ $success = '';
 $stmt_services = $pdo->query("SELECT id, nom FROM services ORDER BY nom");
 $services = $stmt_services->fetchAll();
 
+
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nom = trim($_POST['nom'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $motdepasse = $_POST['motdepasse'] ?? '';
     $role = $_POST['role'] ?? '';
     $id_service = $_POST['id_service'] ?? null;
+    $prenom = $_POST['prenom'] ?? '';
 
     if (!$nom || !$email || !$motdepasse || !$role || !$id_service) {
         $errors[] = "Tous les champs sont obligatoires.";
@@ -38,8 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$errors) {
         $hash = password_hash($motdepasse, PASSWORD_DEFAULT);
 
-        $stmt = $pdo->prepare("INSERT INTO utilisateurs (nom, email, mot_de_passe, role, id_service) VALUES (?, ?, ?, ?, ?)");
-        $result = $stmt->execute([$nom, $email, $hash, $role, $id_service]);
+        $stmt = $pdo->prepare("INSERT INTO utilisateurs (nom,prenom , email, mot_de_passe, role, id_service ) VALUES (?, ?, ?, ?, ?,?)");
+        $result = $stmt->execute([$nom,$prenom, $email, $hash, $role, $id_service]);
 
         if ($result) {
             $success = "Utilisateur ajouté avec succès.";
@@ -241,12 +244,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <form method="POST" action="">
             <div class="form-group">
-                <label for="nom">Nom complet *</label>
+                <label for="nom">Nom  </label>
                 <div class="input-wrapper">
                     <i class="fas fa-user input-icon"></i>
                     <input type="text" id="nom" name="nom" required 
                            value="<?= htmlspecialchars($_POST['nom'] ?? '') ?>" 
                            placeholder="Entrez le nom complet" />
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="nom">Prenom </label>
+                <div class="input-wrapper">
+                    <i class="fas fa-user input-icon"></i>
+                    <input type="text" id="nom" name="nom" required 
+                           value="<?= htmlspecialchars($_POST['prenom'] ?? '') ?>" 
+                           placeholder="Entrez le prenom" />
                 </div>
             </div>
 

@@ -243,27 +243,41 @@ try {
     
     // 9. Création d'utilisateurs de test
     echo "<h2>🧪 Création d'utilisateurs de test</h2>";
-    
+     $test_password = password_hash('Test123!', PASSWORD_DEFAULT);
     $test_users = [
-        ['Martin', 'Pierre', 'chef.dev@test.local', 'chef_service', 3, 2],
-        ['Dubois', 'Marie', 'chef.commercial@test.local', 'chef_service', 5, 3],
-        ['Lefebvre', 'Jean', 'chef.marketing@test.local', 'chef_departement', 8, 4],
-        ['Moreau', 'Sophie', 'employe1@test.local', 'employe', 3, 2],
-        ['Garcia', 'Luis', 'employe2@test.local', 'employe', 5, 3],
-        ['Bernard', 'Alice', 'employe3@test.local', 'employe', 7, 4]
+        ['name'=>'Martin', 'prename'=>'Pierre', 'email'=>'chef.dev@test.local', 'password'=>$test_password, 'role'=> 'chef_service', 'id_service'=> 3, 'id_departement'=> 2],
+        ['name'=>'Dubois', 'prename'=>'Marie', 'email'=>'chef.commercial@test.local', 'password'=>$test_password, 'role'=> 'chef_service', 'id_service'=> 5, 'id_departement'=> 3],
+        ['name'=>'Lefebvre', 'prename'=>'Jean', 'email'=>'chef.marketing@test.local', 'password'=>$test_password, 'role'=> 'chef_departement', 'id_service'=> 8, 'id_departement'=> 4],
+        ['name'=>'Moreau', 'prename'=>'Sophie', 'email'=>'employe1@test.local', 'password'=>$test_password, 'role'=> 'employe', 'id_service'=> 3, 'id_departement'=> 2],
+        ['name'=>'Garcia', 'prename'=>'Luis', 'email'=>'employe2@test.local', 'password'=>$test_password, 'role'=> 'employe', 'id_service'=> 5, 'id_departement'=> 3],
+        ['name'=>'Bernard', 'prename'=>'Alice', 'email'=>'employe3@test.local', 'password'=>$test_password, 'role'=> 'employe', 'id_service'=> 7, 'id_departement'=> 4]
     ];
     
-    $test_password = password_hash('Test123!', PASSWORD_DEFAULT);
+   
     
     foreach ($test_users as $user) {
         try {
             $stmt = $pdo->prepare("INSERT IGNORE INTO utilisateurs (nom, prenom, email, mot_de_passe, role, id_service, id_departement) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute(array_merge($user, [$test_password]));
+            $stmt->execute([
+                $user['name'],
+                $user['prename'], 
+                $user['email'], 
+                $user['password'],
+                $user['role'], 
+                $user['id_service'], 
+                $user['id_departement']
+            ]);
+            
+            if ($stmt->rowCount() > 0) {
+                echo "<div class='success'>✅ Utilisateur de test {$user['prename']} {$user['name']} ({$user['role']}) créé (mot de passe: Test123!)</div>";
+            } else {
+                echo "<div class='info'>ℹ️ Utilisateur {$user['prename']} {$user['name']} déjà existant</div>";
+            }
         } catch (PDOException $e) {
-            // Ignore les doublons
+            echo "<div class='error'>❌ Erreur pour {$user['prename']} {$user['name']}: " . $e->getMessage() . "</div>";
         }
     }
-    echo "<div class='success'>✅ Utilisateurs de test créés (mot de passe: Test123!)</div>";
+    
     
     echo "<h2>🎉 Installation terminée avec succès !</h2>";
     echo "<div class='success'>

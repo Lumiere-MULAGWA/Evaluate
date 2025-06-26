@@ -75,6 +75,7 @@ $employes = $req->fetchAll();
             border: 2px solid transparent;
             transition: all 0.3s ease;
             cursor: pointer;
+            position: relative;
         }
         
         .employee-card:hover {
@@ -86,6 +87,21 @@ $employes = $req->fetchAll();
         .employee-card.selected {
             border-color: #0072ff;
             background: #f0f8ff;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 114, 255, 0.2);
+        }
+        
+        .employee-card.selected::after {
+            content: '✓ Sélectionné';
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            background: #0072ff;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
         }
         
         .employee-info {
@@ -122,38 +138,35 @@ $employes = $req->fetchAll();
             position: absolute;
             opacity: 0;
             cursor: pointer;
+            pointer-events: none;
         }
         
-        .checkbox-custom {
+        .selection-indicator {
             position: absolute;
             top: 15px;
             right: 15px;
-            width: 24px;
-            height: 24px;
+            width: 30px;
+            height: 30px;
             border: 2px solid #ddd;
-            border-radius: 6px;
+            border-radius: 50%;
             background: white;
             transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            opacity: 0;
         }
         
-        .checkbox-custom::after {
-            content: '✓';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) scale(0);
-            color: white;
-            font-weight: bold;
-            transition: all 0.3s ease;
+        .employee-card:hover .selection-indicator {
+            opacity: 1;
         }
         
-        .checkbox-input:checked + .checkbox-custom {
+        .employee-card.selected .selection-indicator {
+            opacity: 1;
             background: #0072ff;
             border-color: #0072ff;
-        }
-        
-        .checkbox-input:checked + .checkbox-custom::after {
-            transform: translate(-50%, -50%) scale(1);
+            color: white;
         }
         
         .action-bar {
@@ -174,12 +187,13 @@ $employes = $req->fetchAll();
             background: linear-gradient(135deg, #0072ff, #00c6ff);
             color: white;
             border: none;
-            padding: 12px 30px;
+            padding: 15px 40px;
             border-radius: 8px;
             font-size: 16px;
             cursor: pointer;
             transition: all 0.3s ease;
-            min-width: 200px;
+            min-width: 250px;
+            font-weight: 600;
         }
         
         .submit-btn:hover:not(:disabled) {
@@ -190,6 +204,24 @@ $employes = $req->fetchAll();
         .submit-btn:disabled {
             background: #ccc;
             cursor: not-allowed;
+            opacity: 0.6;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-right: 10px;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-1px);
         }
         
         @media (max-width: 768px) {
@@ -207,19 +239,23 @@ $employes = $req->fetchAll();
 <body>
 
 <div class="container">
+     
     <div class="header">
         <h2>Évaluation des employés</h2>
         <p>Sélectionnez les employés que vous souhaitez évaluer</p>
     </div>
-    
-    <form method="POST" action="evaluer_employes.php" id="evaluationForm">
+    <a href="index.php" class="back-btn">
+                <i class="fas fa-arrow-left"></i>
+                Retour
+            </a>
+    <form method="POST" action="evaluer_employes_new.php" id="evaluationForm">
         <div class="content">
             <div class="employee-grid">
                 <?php foreach ($employes as $emp): ?>
-                    <label class="employee-card" for="emp_<?= $emp['id'] ?>">
+                    <div class="employee-card" data-employee-id="<?= $emp['id'] ?>" data-employee-name="<?= htmlspecialchars($emp['nom']) ?>">
                         <input type="checkbox" name="employes[]" value="<?= $emp['id'] ?>" 
                                class="checkbox-input" id="emp_<?= $emp['id'] ?>">
-                        <div class="checkbox-custom"></div>
+                        <div class="selection-indicator">✓</div>
                         
                         <div class="employee-info">
                             <div class="employee-avatar">
@@ -228,56 +264,142 @@ $employes = $req->fetchAll();
                             <div class="employee-details">
                                 <h3><?= htmlspecialchars($emp['nom']) ?></h3>
                                 <p><?= htmlspecialchars($emp['email']) ?></p>
+                                <?php if (!empty($emp['prenom'])): ?>
+                                    <p style="font-size: 12px; color: #888;">
+                                        <?= htmlspecialchars($emp['prenom']) ?>
+                                    </p>
+                                <?php endif; ?>
                             </div>
                         </div>
-                    </label>
+                    </div>
                 <?php endforeach; ?>
             </div>
         </div>
         
         <div class="action-bar">
-            <span class="selected-count" id="selectedCount">0 employé(s) sélectionné(s)</span>
-            <button type="submit" class="submit-btn" id="submitBtn" disabled>
-                Lancer l'évaluation
-            </button>
+            <div>
+                <span class="selected-count" id="selectedCount">0 employé(s) sélectionné(s)</span>
+                <br>
+                <small style="color: #888; font-size: 12px;">Cliquez sur les cartes pour sélectionner les employés</small>
+            </div>
+            <div>
+                <button type="button" class="btn-secondary" onclick="clearSelection()">
+                    Tout désélectionner
+                </button>
+                <button type="submit" class="submit-btn" id="submitBtn" disabled>
+                    Commencer l'évaluation →
+                </button>
+            </div>
         </div>
     </form>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const checkboxes = document.querySelectorAll('.checkbox-input');
+    const cards = document.querySelectorAll('.employee-card');
     const selectedCount = document.getElementById('selectedCount');
     const submitBtn = document.getElementById('submitBtn');
-    const cards = document.querySelectorAll('.employee-card');
     
     function updateSelection() {
-        const checked = document.querySelectorAll('.checkbox-input:checked').length;
-        selectedCount.textContent = `${checked} employé(s) sélectionné(s)`;
-        submitBtn.disabled = checked === 0;
+        const selectedCards = document.querySelectorAll('.employee-card.selected');
+        const count = selectedCards.length;
+        
+        selectedCount.textContent = `${count} employé(s) sélectionné(s)`;
+        submitBtn.disabled = count === 0;
+        
+        if (count > 0) {
+            submitBtn.textContent = `Évaluer ${count} employé${count > 1 ? 's' : ''} →`;
+        } else {
+            submitBtn.textContent = 'Commencer l\'évaluation →';
+        }
     }
     
-    checkboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', function() {
-            const card = this.closest('.employee-card');
-            if (this.checked) {
-                card.classList.add('selected');
-            } else {
-                card.classList.remove('selected');
+    function toggleEmployeeSelection(card) {
+        const checkbox = card.querySelector('.checkbox-input');
+        const isSelected = card.classList.contains('selected');
+        
+        if (isSelected) {
+            // Désélectionner
+            card.classList.remove('selected');
+            checkbox.checked = false;
+        } else {
+            // Sélectionner
+            card.classList.add('selected');
+            checkbox.checked = true;
+            
+            // Animation de feedback
+            card.style.transform = 'scale(0.98)';
+            setTimeout(() => {
+                card.style.transform = '';
+            }, 150);
+        }
+        
+        updateSelection();
+    }
+    
+    // Gestion du clic sur les cartes
+    cards.forEach(card => {
+        card.addEventListener('click', function(e) {
+            e.preventDefault();
+            toggleEmployeeSelection(this);
+        });
+        
+        // Animation hover améliorée
+        card.addEventListener('mouseenter', function() {
+            if (!this.classList.contains('selected')) {
+                this.style.borderColor = '#0072ff';
+                this.style.transform = 'translateY(-2px)';
             }
-            updateSelection();
+        });
+        
+        card.addEventListener('mouseleave', function() {
+            if (!this.classList.contains('selected')) {
+                this.style.borderColor = 'transparent';
+                this.style.transform = '';
+            }
         });
     });
     
-    cards.forEach(card => {
-        card.addEventListener('click', function(e) {
-            if (e.target.type !== 'checkbox') {
-                const checkbox = this.querySelector('.checkbox-input');
-                checkbox.checked = !checkbox.checked;
-                checkbox.dispatchEvent(new Event('change'));
-            }
+    // Fonction pour tout désélectionner
+    window.clearSelection = function() {
+        cards.forEach(card => {
+            card.classList.remove('selected');
+            card.querySelector('.checkbox-input').checked = false;
         });
+        updateSelection();
+    };
+    
+    // Validation avant soumission
+    document.getElementById('evaluationForm').addEventListener('submit', function(e) {
+        const selectedCards = document.querySelectorAll('.employee-card.selected');
+        
+        if (selectedCards.length === 0) {
+            e.preventDefault();
+            alert('Veuillez sélectionner au moins un employé à évaluer.');
+            return false;
+        }
+        
+        // Confirmation avec les noms des employés sélectionnés
+        const employeeNames = Array.from(selectedCards).map(card => 
+            card.getAttribute('data-employee-name')
+        );
+        
+        const confirmMessage = `Voulez-vous commencer l'évaluation de ${selectedCards.length} employé(s) ?\n\n` +
+                              `Employés sélectionnés :\n• ${employeeNames.join('\n• ')}`;
+        
+        if (!confirm(confirmMessage)) {
+            e.preventDefault();
+            return false;
+        }
+        
+        // Animation de chargement
+        submitBtn.textContent = 'Préparation...';
+        submitBtn.style.background = '#28a745';
+        submitBtn.disabled = true;
     });
+    
+    // Initialisation
+    updateSelection();
 });
 </script>
 

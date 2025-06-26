@@ -316,7 +316,7 @@ if (isset($_POST['login'])) {
         </div>
     </div>
     
-    <script src="assets/js/app.js"></script>
+   
     <script>
         // Gestion du formulaire de connexion
         document.addEventListener('DOMContentLoaded', function() {
